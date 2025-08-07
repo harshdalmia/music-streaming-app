@@ -29,7 +29,6 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async session({ session, user }) {
-      // Ensure user ID is set in session
       if (session.user && user) {
         session.user.id = user.id;
       }

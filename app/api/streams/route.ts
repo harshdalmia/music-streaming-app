@@ -103,7 +103,11 @@ export async function GET(req: NextRequest) {
         });
 
         return NextResponse.json({
-            streams: streams.map((stream) => ({
+            streams: streams.map((stream: {
+                [key: string]: any;
+                _count: { upvotes: number };
+                anonymousVotes: number;
+            }) => ({
                 ...stream,
                 upvotes: stream._count.upvotes + stream.anonymousVotes,
             })),
