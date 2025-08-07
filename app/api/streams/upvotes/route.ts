@@ -1,92 +1,66 @@
+import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { authOptions } from "@/app/lib/auth";
 
 export async function POST(req: NextRequest) {
-    try {
-        const { streamId } = await req.json();
-        
-        if (!streamId) {
-            return NextResponse.json({
-                error: "Stream ID is required"
-            }, { status: 400 });
-        }
-
-        const session = await getServerSession();
-
-        if (session?.user?.email) {
-            // Registered user voting
-            let user = await prismaClient.user.findFirst({
-                where: {
-                    email: session.user.email
-                }
-            });
-
-            // Create user if they don't exist
-            if (!user) {
-                user = await prismaClient.user.create({
-                    data: {
-                        email: session.user.email,
-                        provider: "Google"
-                    }
-                });
-            }
-
-            // Check if user already upvoted
-            const existingUpvote = await prismaClient.upvotes.findFirst({
-                where: {
-                    userId: user.id,
-                    streamId: streamId
-                }
-            });
-
-            if (existingUpvote) {
-                return NextResponse.json({
-                    error: "Already upvoted"
-                }, { status: 400 });
-            }
-
-            // Create upvote
-            await prismaClient.upvotes.create({
-                data: {
-                    userId: user.id,
-                    streamId: streamId
-                }
-            });
-        } else {
-            // Anonymous user voting - increment anonymousVotes
-            await prismaClient.stream.update({
-                where: {
-                    id: streamId
-                },
-                data: {
-                    anonymousVotes: {
-                        increment: 1
-                    }
-                }
-            });
-        }
-
-        // Get updated stream data
-        const stream = await prismaClient.stream.findUnique({
-            where: { id: streamId },
-            include: {
-                _count: {
-                    select: { upvotes: true }
-                }
-            }
-        });
-
-        const totalVotes = (stream?._count.upvotes || 0) + (stream?.anonymousVotes || 0);
-
-        return NextResponse.json({
-            message: "Upvoted successfully",
-            upvotes: totalVotes
-        });
-    } catch (error) {
-        console.error("Failed to upvote:", error);
-        return NextResponse.json({
-            error: "Failed to upvote"
-        }, { status: 500 });
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Get user from database
+    const user = await prismaClient.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const data = await req.json();
+    const { streamId } = data;
+
+    if (!streamId) {
+      return NextResponse.json({ error: "Stream ID is required" }, { status: 400 });
+    }
+
+    // Check if user already upvoted
+    const existingUpvote = await prismaClient.upvotes.findUnique({
+      where: {
+        userId_streamId: {
+          userId: user.id,
+          streamId: streamId,
+        },
+      },
+    });
+
+    if (existingUpvote) {
+      // Remove upvote if already exists
+      await prismaClient.upvotes.delete({
+        where: {
+          userId_streamId: {
+            userId: user.id,
+            streamId: streamId,
+          },
+        },
+      });
+      return NextResponse.json({ message: "Upvote removed" });
+    } else {
+      // Add upvote
+      await prismaClient.upvotes.create({
+        data: {
+          userId: user.id,
+          streamId: streamId,
+        },
+      });
+      return NextResponse.json({ message: "Upvoted successfully" });
+    }
+  } catch (error) {
+    console.error("Error handling upvote:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

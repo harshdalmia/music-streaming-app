@@ -17,8 +17,9 @@ export default function StreamVotingUI() {
       if (session?.user?.email) {
         try {
           const res = await axios.get("/api/user/me");
-          if (res.data.user) {
-            setCreatorId(res.data.user.id);
+          // Fix: res.data is the user object directly, not res.data.user
+          if (res.data.id) {
+            setCreatorId(res.data.id);
           }
         } catch (error) {
           console.error("Failed to fetch current user:", error);

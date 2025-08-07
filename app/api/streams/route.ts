@@ -1,142 +1,116 @@
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { authOptions } from "@/app/lib/auth";
 
-
-const CreateStreamSchema = z.object({
-    url: z.string(),
-    type: z.enum(["Youtube", "Spotify"]),
-});
 
 export async function POST(req: NextRequest) {
-    const session = await getServerSession();
-    
-    const user = await prismaClient.user.findFirst({
-        where: {
-            email: session?.user?.email ?? ""
-        }
-    });
-    
-    if (!user) {
-        return NextResponse.json({
-            error: "Unauthorized"
-        }, { status: 401 });
-    }
-
     try {
-        const data = CreateStreamSchema.parse(await req.json());
+        const session = await getServerSession(authOptions);
         
-        // Extract YouTube ID
-        function extractYouTubeId(url: string): string | null {
-            const patterns = [
-                /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-                /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
-            ];
-            
-            for (const pattern of patterns) {
-                const match = url.match(pattern);
-                if (match) return match[1];
-            }
-            return null;
+        if (!session || !session.user?.email) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-        
-        const extractedId = extractYouTubeId(data.url);
-        if (!extractedId) {
-            return NextResponse.json({
-                error: "Invalid YouTube URL"
-            }, { status: 400 });
+
+        // Get user from database
+        const user = await prismaClient.user.findUnique({
+            where: { email: session.user.email },
+            select: { id: true }
+        });
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
+        const data = await req.json();
+        const { url, type } = data;
+
+        if (!url || !type) {
+            return NextResponse.json({ error: "URL and type are required" }, { status: 400 });
+        }
+
+        // Extract video ID and get metadata
+        let extractedId = "";
+        let title = "";
+        let smallImg = "";
+        let bigImg = "";
+
+        if (type === "Youtube") {
+            // Extract YouTube video ID
+            const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+            const match = url.match(youtubeRegex);
+            
+            if (match) {
+                extractedId = match[1];
+                title = `YouTube Video ${extractedId}`;
+                smallImg = `https://img.youtube.com/vi/${extractedId}/default.jpg`;
+                bigImg = `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`;
+            } else {
+                return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+            }
         }
 
         const stream = await prismaClient.stream.create({
             data: {
-                url: data.url,
-                type: data.type,
+                type,
+                url,
                 extractedId,
+                title,
+                smallImg,
+                bigImg,
                 userId: user.id,
-                title: "New Video", // You can fetch title from YouTube API later
-                smallImg: `https://img.youtube.com/vi/${extractedId}/mqdefault.jpg`,
-                bigImg: `https://img.youtube.com/vi/${extractedId}/maxresdefault.jpg`,
-            }
+            },
         });
 
-        return NextResponse.json({
-            message: "Stream created successfully",
-            stream
-        });
-    } catch (e) {
-        return NextResponse.json({
-            error: "Invalid data"
-        }, { status: 400 });
+        return NextResponse.json({ stream });
+    } catch (error) {
+        console.error("Error creating stream:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
-
-
-
 export async function GET(req: NextRequest) {
-    const creatorId = req.nextUrl.searchParams.get("creatorId");
-    
-    if (!creatorId) {
-        return NextResponse.json({
-            error: "Creator ID is required"
-        }, { status: 400 });
-    }
-
     try {
-        const session = await getServerSession();
-        let currentUser = null;
+        const { searchParams } = new URL(req.url);
+        const creatorId = searchParams.get("creatorId");
 
-        // Get current user only if session exists (optional authentication)
-        if (session?.user?.email) {
-            currentUser = await prismaClient.user.findFirst({
-                where: {
-                    email: session.user.email
-                }
-            });
+        if (!creatorId) {
+            return NextResponse.json({ error: "Creator ID is required" }, { status: 400 });
         }
 
         const streams = await prismaClient.stream.findMany({
             where: {
                 userId: creatorId,
-                active: true
+                active: true,
             },
             include: {
                 _count: {
                     select: {
                         upvotes: true,
-                    }
+                    },
                 },
-                upvotes: currentUser ? {
-                    where: {
-                        userId: currentUser.id
-                    }
-                } : false
             },
             orderBy: [
                 {
                     upvotes: {
-                        _count: 'desc'
-                    }
+                        _count: "desc",
+                    },
                 },
                 {
-                    anonymousVotes: 'desc'
-                }
-            ]
+                    anonymousVotes: "desc",
+                },
+            ],
         });
-        
+
         return NextResponse.json({
-            streams: streams.map(({_count, upvotes, anonymousVotes, ...rest}) => ({
-                ...rest,
-                upvotes: _count.upvotes + anonymousVotes, // Combine registered + anonymous votes
-                haveUpvoted: currentUser && upvotes.length > 0,
-            }))
+            streams: streams.map((stream) => ({
+                ...stream,
+                upvotes: stream._count.upvotes + stream.anonymousVotes,
+            })),
         });
     } catch (error) {
-        console.error("Failed to fetch streams:", error);
-        return NextResponse.json({
-            error: "Failed to fetch streams"
-        }, { status: 500 });
+        console.error("Error fetching streams:", error);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
