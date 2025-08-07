@@ -43,12 +43,10 @@ export default function StreamView({
 
   async function refreshStreams() {
     try {
-      const res = await axios.get(`/api/streams/?creatorId=${creatorId}`, {
-        withCredentials: true
-      });
+      console.log("Fetching streams for creatorId:", creatorId);
+      const res = await axios.get(`/api/streams/?creatorId=${creatorId}`);
       if (res.data.streams) {
         setQueue(res.data.streams);
-       
         
         const activeStream = res.data.streams.find((stream: Video) => stream.active);
         if (activeStream) {
@@ -57,6 +55,11 @@ export default function StreamView({
       }
     } catch (error) {
       console.error("Failed to fetch streams:", error);
+      
+      if (axios.isAxiosError(error)) {
+        console.error("Response data:", error.response?.data);
+        console.error("Response status:", error.response?.status);
+      }
     }
   }
 

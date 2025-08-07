@@ -2,7 +2,7 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import axios from "axios";
+
 
 const CreateStreamSchema = z.object({
     url: z.string(),
@@ -140,28 +140,6 @@ export async function GET(req: NextRequest) {
     }
 }
 
-async function refreshStreams(creatorId: string, setQueue: Function, setCurrentVideo: Function) {
-  try {
-    console.log("Fetching streams for creatorId:", creatorId); // Debug log
-    const res = await axios.get(`/api/streams/?creatorId=${creatorId}`);
-    if (res.data.streams) {
-      setQueue(res.data.streams);
-      
-      const activeStream = res.data.streams.find((stream: Video) => stream.active);
-      if (activeStream) {
-        setCurrentVideo(activeStream);
-      }
-    }
-  } catch (error) {
-    console.error("Failed to fetch streams:", error);
-    
-    // Add more detailed error logging
-    if (axios.isAxiosError(error)) {
-      console.error("Response data:", error.response?.data);
-      console.error("Response status:", error.response?.status);
-    }
-  }
-}
 
 
 
