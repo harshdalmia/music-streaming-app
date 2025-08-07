@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
         const streams = await prismaClient.stream.findMany({
             where: {
                 userId: creatorId,
-                active: true,
+                active: true, // Only get active streams
             },
             include: {
                 _count: {
@@ -103,11 +103,7 @@ export async function GET(req: NextRequest) {
         });
 
         return NextResponse.json({
-            streams: streams.map((stream: {
-                [key: string]: any;
-                _count: { upvotes: number };
-                anonymousVotes: number;
-            }) => ({
+            streams: streams.map((stream) => ({
                 ...stream,
                 upvotes: stream._count.upvotes + stream.anonymousVotes,
             })),

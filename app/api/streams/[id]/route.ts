@@ -1,49 +1,54 @@
+import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { authOptions } from "@/app/lib/auth";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }  // Change this line - make params a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  // Add this line - await the params
-  const { id } = await params;
-  
-  const session = await getServerSession();
-  
-  const user = await prismaClient.user.findFirst({
-    where: {
-      email: session?.user?.email ?? ""
-    }
-  });
-  
-  if (!user) {
-    return NextResponse.json({
-      error: "Unauthorized"
-    }, { status: 401 });
-  }
-
   try {
-    const { active } = await req.json();
-    
+    // Await the params in Next.js 15
+    const { id } = await params;
+    const data = await req.json();
+    const { active } = data;
+
     // Update the stream
-    const stream = await prismaClient.stream.update({
-      where: {
-        id: id  // Use the awaited id (not params.id)
-      },
-      data: {
-        active: active
-      }
+    const updatedStream = await prismaClient.stream.update({
+      where: { id },
+      data: { active },
     });
 
-    return NextResponse.json({ 
-      message: "Stream updated successfully",
-      stream 
-    });
+    return NextResponse.json({ stream: updatedStream });
   } catch (error) {
-    console.error("Failed to update stream:", error);
-    return NextResponse.json({
-      error: "Failed to update stream"
-    }, { status: 500 });
+    console.error("Error updating stream:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Await the params in Next.js 15
+    const { id } = await params;
+
+    // Mark stream as inactive instead of deleting
+    const updatedStream = await prismaClient.stream.update({
+      where: { id },
+      data: { active: false },
+    });
+
+    return NextResponse.json({ message: "Stream removed from queue" });
+  } catch (error) {
+    console.error("Error removing stream:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ChevronUp, ChevronDown, Play, Users, Plus, Share } from "lucide-react"
+import { ChevronUp, ChevronDown, Play, Users, Plus, Share,X } from "lucide-react"
 import { YouTubeEmbed } from "@next/third-parties/google"
 import axios from "axios"
 import { Appbar } from "./Appbar"
@@ -32,45 +32,51 @@ export default function StreamView({
     creatorId?: string | null
     isCreatorPage?: boolean
 }) {
-  const { data: session } = useSession()  // Add this line
+  const { data: session } = useSession()
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null)
   const [queue, setQueue] = useState<Video[]>([])
+  const [streams, setStreams] = useState<Video[]>([]) // Add missing streams state
   const [newVideoUrl, setNewVideoUrl] = useState("")
   const [previewVideo, setPreviewVideo] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shareMessage, setShareMessage] = useState("")
   
-
-  async function refreshStreams() {
+  // Consolidated fetch function
+  const fetchStreams = async () => {
     try {
       console.log("Fetching streams for creatorId:", creatorId);
-      const res = await axios.get(`/api/streams/?creatorId=${creatorId}`);
-      if (res.data.streams) {
-        setQueue(res.data.streams);
+      const response = await fetch(`/api/streams?creatorId=${creatorId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
         
-        const activeStream = res.data.streams.find((stream: Video) => stream.active);
-        if (activeStream) {
-          setCurrentVideo(activeStream);
+        // Only get active streams
+        const activeStreams = data.streams.filter((stream: Video) => stream.active);
+        setStreams(activeStreams);
+        
+        // Sort by upvotes and update queue
+        const sortedStreams = activeStreams.sort((a: Video, b: Video) => b.upvotes - a.upvotes);
+        setQueue(sortedStreams);
+        
+        // Set current video if none is playing
+        if (!currentVideo && sortedStreams.length > 0) {
+          setCurrentVideo(sortedStreams[0]);
         }
+        
+        console.log('Fetched active streams:', activeStreams.length);
       }
     } catch (error) {
-      console.error("Failed to fetch streams:", error);
-      
-      if (axios.isAxiosError(error)) {
-        console.error("Response data:", error.response?.data);
-        console.error("Response status:", error.response?.status);
-      }
+      console.error('Error fetching streams:', error);
     }
-  }
+  };
 
   useEffect(() => {
-    refreshStreams();
-    const interval = setInterval(() => {
-      refreshStreams();
-    }, 10000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (creatorId) {
+      fetchStreams();
+      const interval = setInterval(fetchStreams, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [creatorId]);
 
   function extractYouTubeId(url: string): string | null {
     const patterns = [
@@ -89,7 +95,7 @@ export default function StreamView({
     const shareData = {
       title: "🎵 Stream Song Voting",
       text: "Vote for the next song on the stream! Submit your favorites and help decide what plays next.",
-      url: `${window.location.origin}/creator/${creatorId}`,  // Fixed: use origin instead of hostname
+      url: `${window.location.origin}/creator/${creatorId}`,
     }
 
     try {
@@ -124,7 +130,7 @@ export default function StreamView({
       });
       
       // Refresh streams after adding
-      await refreshStreams();
+      await fetchStreams();
       
       setNewVideoUrl("")
       setPreviewVideo(null)
@@ -154,14 +160,14 @@ export default function StreamView({
                     ? { 
                         ...video, 
                         upvotes: Math.max(0, video.upvotes + increment), 
-                        haveUpvoted: increment > 0 // Remove session check since anonymous users can vote
+                        haveUpvoted: increment > 0
                     } 
                     : video
             ).sort((a, b) => b.upvotes - a.upvotes)
         );
 
         // Refresh to get accurate data
-        await refreshStreams();
+        setTimeout(() => fetchStreams(), 1000);
     } catch (error) {
         console.error("Failed to vote:", error);
         if (axios.isAxiosError(error) && error.response?.data?.error === "Already upvoted") {
@@ -170,35 +176,79 @@ export default function StreamView({
     }
   }
 
+  // Fixed handlePlayNext function
   const handlePlayNext = async () => {
-    if (queue.length === 0) return
-
-    // Mark current video as inactive
-    if (currentVideo) {
-      try {
-        await axios.patch(`/api/streams/${currentVideo.id}`, {
-          active: false
-        });
-        console.log(`Marked video ${currentVideo.id} as inactive`);
-      } catch (error) {
-        console.error("Failed to mark video as inactive:", error);
-      }
+    console.log('Current queue length:', queue.length);
+    
+    if (queue.length === 0) {
+      console.log('No songs in queue');
+      setCurrentVideo(null);
+      return;
     }
 
-    const nextVideo = queue[0]
-    setCurrentVideo(nextVideo)
-    setQueue((prev) => prev.slice(1))
+    const nextStream = queue[0];
+    console.log('Playing next:', nextStream.title);
     
-    // Refresh the streams list
-    await refreshStreams();
-  }
+    try {
+      // Mark the current song as inactive in the database
+      const response = await fetch(`/api/streams/${nextStream.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ active: false }),
+      });
+
+      if (response.ok) {
+        console.log('Stream marked as inactive');
+        
+        // Set the next song as current
+        setCurrentVideo(nextStream);
+        
+        // Remove from local queue state immediately
+        const newQueue = queue.filter(stream => stream.id !== nextStream.id);
+        setQueue(newQueue);
+        console.log('New queue length:', newQueue.length);
+        
+        // Refresh the streams to get updated data
+        setTimeout(() => {
+          fetchStreams();
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Error marking stream as inactive:', error);
+    }
+  };
+
+  const removeFromQueue = async (streamId: string) => {
+    try {
+      const response = await fetch(`/api/streams/${streamId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ active: false }),
+      });
+
+      if (response.ok) {
+        // Remove from local state immediately
+        const newQueue = queue.filter(stream => stream.id !== streamId);
+        setQueue(newQueue);
+        
+        // Refresh streams
+        fetchStreams();
+      }
+    } catch (error) {
+      console.error('Error removing from queue:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       <Appbar />
       <div className="p-4">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header - Only show share button on dashboard, not creator page */}
+          {/* Header */}
           <div className="text-center space-y-2 relative">
             <div className="flex items-center justify-center gap-4">
               <h1 className="text-4xl font-bold text-white">🎵 Stream Song Voting</h1>
@@ -235,22 +285,18 @@ export default function StreamView({
                 <CardContent className="space-y-4">
                   {currentVideo ? (
                     <>
-                      {/* Conditional rendering based on isCreatorPage */}
                       {isCreatorPage ? (
-                        // Show thumbnail for creator page (shared links)
                         <div className="aspect-video rounded-lg overflow-hidden bg-black/40 relative">
                           <img 
                             src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
                             alt={currentVideo.title}
                             className="w-full h-full object-cover"
                           />
-                          {/* Play button overlay */}
                           <div className="absolute inset-0 flex items-center justify-center">
                             <div className="bg-red-600 rounded-full p-4 hover:bg-red-700 transition-colors pointer-events-none">
                               <Play className="w-8 h-8 text-white fill-white" />
                             </div>
                           </div>
-                          {/* Disabled overlay to prevent clicking */}
                           <div className="absolute inset-0 bg-black/20 flex items-end justify-center pb-4">
                             <div className="bg-black/70 text-white px-3 py-1 rounded text-sm">
                               Video preview - controlled by stream creator
@@ -258,7 +304,6 @@ export default function StreamView({
                           </div>
                         </div>
                       ) : (
-                        // Show auto-playing video for dashboard
                         <div className="aspect-video rounded-lg overflow-hidden">
                           <YouTubeEmbed videoid={currentVideo.extractedId} height={400} params="autoplay=1&mute=1" />
                         </div>
@@ -324,14 +369,12 @@ export default function StreamView({
                   {previewVideo && (
                     <div className="aspect-video rounded-lg overflow-hidden bg-black/40">
                       {isCreatorPage ? (
-                        // Show thumbnail preview for creator page
                         <img 
-                          src={`https://img.youtube.com/vi/${previewVideo}/mqdefault.jpg`}  // Fixed: complete the URL
+                          src={`https://img.youtube.com/vi/${previewVideo}/mqdefault.jpg`}
                           alt="Video preview"
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        // Show YouTube embed for dashboard
                         <YouTubeEmbed videoid={previewVideo} height={200} params="controls=1" />
                       )}
                     </div>
@@ -371,31 +414,47 @@ export default function StreamView({
                           <h4 className="text-white text-sm font-medium truncate">{video.title}</h4>
                         </div>
 
-                        <div className="flex flex-col items-center gap-1">
-                          {!video.haveUpvoted ? (
+                        <div className="flex items-center gap-2">
+                          {/* Voting buttons */}
+                          <div className="flex flex-col items-center gap-1">
+                            {!video.haveUpvoted ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleVote(video.id, 1)}
+                                className="h-6 w-6 p-0 text-green-400 hover:text-green-300 hover:bg-green-500/20"
+                              >
+                                <ChevronUp className="w-4 h-4" />
+                              </Button>
+                            ) : (
+                              <div className="h-6 w-6 flex items-center justify-center">
+                                <ChevronUp className="w-4 h-4 text-green-600" />
+                              </div>
+                            )}
+                            <span className="text-white text-sm font-bold min-w-[2ch] text-center">{video.upvotes}</span>
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => handleVote(video.id, 1)}
-                              className="h-6 w-6 p-0 text-green-400 hover:text-green-300 hover:bg-green-500/20"
+                              onClick={() => handleVote(video.id, -1)}
+                              className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
+                              disabled={video.upvotes === 0}
                             >
-                              <ChevronUp className="w-4 h-4" />
+                              <ChevronDown className="w-4 h-4" />
                             </Button>
-                          ) : (
-                            <div className="h-6 w-6 flex items-center justify-center">
-                              <ChevronUp className="w-4 h-4 text-green-600" />
-                            </div>
+                          </div>
+
+                          {/* Delete button - only visible on dashboard (not on shared fan page) */}
+                          {!isCreatorPage && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => removeFromQueue(video.id)}
+                              className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
+                              title="Remove from queue"
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
                           )}
-                          <span className="text-white text-sm font-bold min-w-[2ch] text-center">{video.upvotes}</span>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleVote(video.id, -1)}
-                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/20"
-                            disabled={video.upvotes === 0}
-                          >
-                            <ChevronDown className="w-4 h-4" />
-                          </Button>
                         </div>
                       </div>
                     </div>
