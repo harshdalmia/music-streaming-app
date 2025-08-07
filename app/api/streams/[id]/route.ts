@@ -4,8 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }  // Change this line - make params a Promise
 ) {
+  // Add this line - await the params
+  const { id } = await params;
+  
   const session = await getServerSession();
   
   const user = await prismaClient.user.findFirst({
@@ -26,7 +29,7 @@ export async function PATCH(
     // Update the stream
     const stream = await prismaClient.stream.update({
       where: {
-        id: params.id
+        id: id  // Use the awaited id (not params.id)
       },
       data: {
         active: active
