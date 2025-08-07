@@ -42,7 +42,8 @@ export type StreamType = (typeof StreamType)[keyof typeof StreamType]
 
 
 export const Provider: {
-  Google: 'Google'
+  Google: 'Google',
+  Anonymous: 'Anonymous'
 };
 
 export type Provider = (typeof Provider)[keyof typeof Provider]
@@ -2227,8 +2228,18 @@ export namespace Prisma {
 
   export type AggregateStream = {
     _count: StreamCountAggregateOutputType | null
+    _avg: StreamAvgAggregateOutputType | null
+    _sum: StreamSumAggregateOutputType | null
     _min: StreamMinAggregateOutputType | null
     _max: StreamMaxAggregateOutputType | null
+  }
+
+  export type StreamAvgAggregateOutputType = {
+    anonymousVotes: number | null
+  }
+
+  export type StreamSumAggregateOutputType = {
+    anonymousVotes: number | null
   }
 
   export type StreamMinAggregateOutputType = {
@@ -2240,6 +2251,7 @@ export namespace Prisma {
     smallImg: string | null
     bigImg: string | null
     active: boolean | null
+    anonymousVotes: number | null
     userId: string | null
   }
 
@@ -2252,6 +2264,7 @@ export namespace Prisma {
     smallImg: string | null
     bigImg: string | null
     active: boolean | null
+    anonymousVotes: number | null
     userId: string | null
   }
 
@@ -2264,10 +2277,19 @@ export namespace Prisma {
     smallImg: number
     bigImg: number
     active: number
+    anonymousVotes: number
     userId: number
     _all: number
   }
 
+
+  export type StreamAvgAggregateInputType = {
+    anonymousVotes?: true
+  }
+
+  export type StreamSumAggregateInputType = {
+    anonymousVotes?: true
+  }
 
   export type StreamMinAggregateInputType = {
     id?: true
@@ -2278,6 +2300,7 @@ export namespace Prisma {
     smallImg?: true
     bigImg?: true
     active?: true
+    anonymousVotes?: true
     userId?: true
   }
 
@@ -2290,6 +2313,7 @@ export namespace Prisma {
     smallImg?: true
     bigImg?: true
     active?: true
+    anonymousVotes?: true
     userId?: true
   }
 
@@ -2302,6 +2326,7 @@ export namespace Prisma {
     smallImg?: true
     bigImg?: true
     active?: true
+    anonymousVotes?: true
     userId?: true
     _all?: true
   }
@@ -2344,6 +2369,18 @@ export namespace Prisma {
     /**
      * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
      * 
+     * Select which fields to average
+    **/
+    _avg?: StreamAvgAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
+     * Select which fields to sum
+    **/
+    _sum?: StreamSumAggregateInputType
+    /**
+     * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+     * 
      * Select which fields to find the minimum value
     **/
     _min?: StreamMinAggregateInputType
@@ -2374,6 +2411,8 @@ export namespace Prisma {
     take?: number
     skip?: number
     _count?: StreamCountAggregateInputType | true
+    _avg?: StreamAvgAggregateInputType
+    _sum?: StreamSumAggregateInputType
     _min?: StreamMinAggregateInputType
     _max?: StreamMaxAggregateInputType
   }
@@ -2387,8 +2426,11 @@ export namespace Prisma {
     smallImg: string
     bigImg: string
     active: boolean
+    anonymousVotes: number
     userId: string
     _count: StreamCountAggregateOutputType | null
+    _avg: StreamAvgAggregateOutputType | null
+    _sum: StreamSumAggregateOutputType | null
     _min: StreamMinAggregateOutputType | null
     _max: StreamMaxAggregateOutputType | null
   }
@@ -2416,6 +2458,7 @@ export namespace Prisma {
     smallImg?: boolean
     bigImg?: boolean
     active?: boolean
+    anonymousVotes?: boolean
     userId?: boolean
     upvotes?: boolean | Stream$upvotesArgs<ExtArgs>
     user?: boolean | UserDefaultArgs<ExtArgs>
@@ -2431,6 +2474,7 @@ export namespace Prisma {
     smallImg?: boolean
     bigImg?: boolean
     active?: boolean
+    anonymousVotes?: boolean
     userId?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["stream"]>
@@ -2444,6 +2488,7 @@ export namespace Prisma {
     smallImg?: boolean
     bigImg?: boolean
     active?: boolean
+    anonymousVotes?: boolean
     userId?: boolean
     user?: boolean | UserDefaultArgs<ExtArgs>
   }, ExtArgs["result"]["stream"]>
@@ -2457,10 +2502,11 @@ export namespace Prisma {
     smallImg?: boolean
     bigImg?: boolean
     active?: boolean
+    anonymousVotes?: boolean
     userId?: boolean
   }
 
-  export type StreamOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "type" | "url" | "extractedId" | "title" | "smallImg" | "bigImg" | "active" | "userId", ExtArgs["result"]["stream"]>
+  export type StreamOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "type" | "url" | "extractedId" | "title" | "smallImg" | "bigImg" | "active" | "anonymousVotes" | "userId", ExtArgs["result"]["stream"]>
   export type StreamInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     upvotes?: boolean | Stream$upvotesArgs<ExtArgs>
     user?: boolean | UserDefaultArgs<ExtArgs>
@@ -2488,6 +2534,7 @@ export namespace Prisma {
       smallImg: string
       bigImg: string
       active: boolean
+      anonymousVotes: number
       userId: string
     }, ExtArgs["result"]["stream"]>
     composites: {}
@@ -2922,6 +2969,7 @@ export namespace Prisma {
     readonly smallImg: FieldRef<"Stream", 'String'>
     readonly bigImg: FieldRef<"Stream", 'String'>
     readonly active: FieldRef<"Stream", 'Boolean'>
+    readonly anonymousVotes: FieldRef<"Stream", 'Int'>
     readonly userId: FieldRef<"Stream", 'String'>
   }
     
@@ -4433,6 +4481,7 @@ export namespace Prisma {
     smallImg: 'smallImg',
     bigImg: 'bigImg',
     active: 'active',
+    anonymousVotes: 'anonymousVotes',
     userId: 'userId'
   };
 
@@ -4530,6 +4579,20 @@ export namespace Prisma {
    */
   export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
     
+
+
+  /**
+   * Reference to a field of type 'Float'
+   */
+  export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+  /**
+   * Reference to a field of type 'Float[]'
+   */
+  export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
+    
   /**
    * Deep Input Types
    */
@@ -4595,6 +4658,7 @@ export namespace Prisma {
     smallImg?: StringFilter<"Stream"> | string
     bigImg?: StringFilter<"Stream"> | string
     active?: BoolFilter<"Stream"> | boolean
+    anonymousVotes?: IntFilter<"Stream"> | number
     userId?: StringFilter<"Stream"> | string
     upvotes?: UpvotesListRelationFilter
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
@@ -4609,6 +4673,7 @@ export namespace Prisma {
     smallImg?: SortOrder
     bigImg?: SortOrder
     active?: SortOrder
+    anonymousVotes?: SortOrder
     userId?: SortOrder
     upvotes?: UpvotesOrderByRelationAggregateInput
     user?: UserOrderByWithRelationInput
@@ -4626,6 +4691,7 @@ export namespace Prisma {
     smallImg?: StringFilter<"Stream"> | string
     bigImg?: StringFilter<"Stream"> | string
     active?: BoolFilter<"Stream"> | boolean
+    anonymousVotes?: IntFilter<"Stream"> | number
     userId?: StringFilter<"Stream"> | string
     upvotes?: UpvotesListRelationFilter
     user?: XOR<UserScalarRelationFilter, UserWhereInput>
@@ -4640,10 +4706,13 @@ export namespace Prisma {
     smallImg?: SortOrder
     bigImg?: SortOrder
     active?: SortOrder
+    anonymousVotes?: SortOrder
     userId?: SortOrder
     _count?: StreamCountOrderByAggregateInput
+    _avg?: StreamAvgOrderByAggregateInput
     _max?: StreamMaxOrderByAggregateInput
     _min?: StreamMinOrderByAggregateInput
+    _sum?: StreamSumOrderByAggregateInput
   }
 
   export type StreamScalarWhereWithAggregatesInput = {
@@ -4658,6 +4727,7 @@ export namespace Prisma {
     smallImg?: StringWithAggregatesFilter<"Stream"> | string
     bigImg?: StringWithAggregatesFilter<"Stream"> | string
     active?: BoolWithAggregatesFilter<"Stream"> | boolean
+    anonymousVotes?: IntWithAggregatesFilter<"Stream"> | number
     userId?: StringWithAggregatesFilter<"Stream"> | string
   }
 
@@ -4769,6 +4839,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     upvotes?: UpvotesCreateNestedManyWithoutStreamInput
     user: UserCreateNestedOneWithoutStreamsInput
   }
@@ -4782,6 +4853,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     userId: string
     upvotes?: UpvotesUncheckedCreateNestedManyWithoutStreamInput
   }
@@ -4795,6 +4867,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     upvotes?: UpvotesUpdateManyWithoutStreamNestedInput
     user?: UserUpdateOneRequiredWithoutStreamsNestedInput
   }
@@ -4808,6 +4881,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     userId?: StringFieldUpdateOperationsInput | string
     upvotes?: UpvotesUncheckedUpdateManyWithoutStreamNestedInput
   }
@@ -4821,6 +4895,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     userId: string
   }
 
@@ -4833,6 +4908,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
   }
 
   export type StreamUncheckedUpdateManyInput = {
@@ -4844,6 +4920,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     userId?: StringFieldUpdateOperationsInput | string
   }
 
@@ -4987,6 +5064,17 @@ export namespace Prisma {
     not?: NestedBoolFilter<$PrismaModel> | boolean
   }
 
+  export type IntFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntFilter<$PrismaModel> | number
+  }
+
   export type UserScalarRelationFilter = {
     is?: UserWhereInput
     isNot?: UserWhereInput
@@ -5001,7 +5089,12 @@ export namespace Prisma {
     smallImg?: SortOrder
     bigImg?: SortOrder
     active?: SortOrder
+    anonymousVotes?: SortOrder
     userId?: SortOrder
+  }
+
+  export type StreamAvgOrderByAggregateInput = {
+    anonymousVotes?: SortOrder
   }
 
   export type StreamMaxOrderByAggregateInput = {
@@ -5013,6 +5106,7 @@ export namespace Prisma {
     smallImg?: SortOrder
     bigImg?: SortOrder
     active?: SortOrder
+    anonymousVotes?: SortOrder
     userId?: SortOrder
   }
 
@@ -5025,7 +5119,12 @@ export namespace Prisma {
     smallImg?: SortOrder
     bigImg?: SortOrder
     active?: SortOrder
+    anonymousVotes?: SortOrder
     userId?: SortOrder
+  }
+
+  export type StreamSumOrderByAggregateInput = {
+    anonymousVotes?: SortOrder
   }
 
   export type EnumStreamTypeWithAggregatesFilter<$PrismaModel = never> = {
@@ -5044,6 +5143,22 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedBoolFilter<$PrismaModel>
     _max?: NestedBoolFilter<$PrismaModel>
+  }
+
+  export type IntWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
+    _count?: NestedIntFilter<$PrismaModel>
+    _avg?: NestedFloatFilter<$PrismaModel>
+    _sum?: NestedIntFilter<$PrismaModel>
+    _min?: NestedIntFilter<$PrismaModel>
+    _max?: NestedIntFilter<$PrismaModel>
   }
 
   export type StreamScalarRelationFilter = {
@@ -5192,6 +5307,14 @@ export namespace Prisma {
 
   export type BoolFieldUpdateOperationsInput = {
     set?: boolean
+  }
+
+  export type IntFieldUpdateOperationsInput = {
+    set?: number
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
   }
 
   export type UpvotesUpdateManyWithoutStreamNestedInput = {
@@ -5347,6 +5470,33 @@ export namespace Prisma {
     _max?: NestedBoolFilter<$PrismaModel>
   }
 
+  export type NestedIntWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel>
+    in?: number[] | ListIntFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListIntFieldRefInput<$PrismaModel>
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntWithAggregatesFilter<$PrismaModel> | number
+    _count?: NestedIntFilter<$PrismaModel>
+    _avg?: NestedFloatFilter<$PrismaModel>
+    _sum?: NestedIntFilter<$PrismaModel>
+    _min?: NestedIntFilter<$PrismaModel>
+    _max?: NestedIntFilter<$PrismaModel>
+  }
+
+  export type NestedFloatFilter<$PrismaModel = never> = {
+    equals?: number | FloatFieldRefInput<$PrismaModel>
+    in?: number[] | ListFloatFieldRefInput<$PrismaModel>
+    notIn?: number[] | ListFloatFieldRefInput<$PrismaModel>
+    lt?: number | FloatFieldRefInput<$PrismaModel>
+    lte?: number | FloatFieldRefInput<$PrismaModel>
+    gt?: number | FloatFieldRefInput<$PrismaModel>
+    gte?: number | FloatFieldRefInput<$PrismaModel>
+    not?: NestedFloatFilter<$PrismaModel> | number
+  }
+
   export type StreamCreateWithoutUserInput = {
     id?: string
     type: $Enums.StreamType
@@ -5356,6 +5506,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     upvotes?: UpvotesCreateNestedManyWithoutStreamInput
   }
 
@@ -5368,6 +5519,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     upvotes?: UpvotesUncheckedCreateNestedManyWithoutStreamInput
   }
 
@@ -5429,6 +5581,7 @@ export namespace Prisma {
     smallImg?: StringFilter<"Stream"> | string
     bigImg?: StringFilter<"Stream"> | string
     active?: BoolFilter<"Stream"> | boolean
+    anonymousVotes?: IntFilter<"Stream"> | number
     userId?: StringFilter<"Stream"> | string
   }
 
@@ -5565,6 +5718,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     user: UserCreateNestedOneWithoutStreamsInput
   }
 
@@ -5577,6 +5731,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
     userId: string
   }
 
@@ -5630,6 +5785,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     user?: UserUpdateOneRequiredWithoutStreamsNestedInput
   }
 
@@ -5642,6 +5798,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     userId?: StringFieldUpdateOperationsInput | string
   }
 
@@ -5654,6 +5811,7 @@ export namespace Prisma {
     smallImg?: string
     bigImg?: string
     active?: boolean
+    anonymousVotes?: number
   }
 
   export type UpvotesCreateManyUserInput = {
@@ -5670,6 +5828,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     upvotes?: UpvotesUpdateManyWithoutStreamNestedInput
   }
 
@@ -5682,6 +5841,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
     upvotes?: UpvotesUncheckedUpdateManyWithoutStreamNestedInput
   }
 
@@ -5694,6 +5854,7 @@ export namespace Prisma {
     smallImg?: StringFieldUpdateOperationsInput | string
     bigImg?: StringFieldUpdateOperationsInput | string
     active?: BoolFieldUpdateOperationsInput | boolean
+    anonymousVotes?: IntFieldUpdateOperationsInput | number
   }
 
   export type UpvotesUpdateWithoutUserInput = {

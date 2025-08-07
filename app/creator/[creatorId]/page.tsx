@@ -1,18 +1,20 @@
 "use client";
+
+import { use } from "react";
 import StreamView from "@/app/components/StreamView";
 
 export default function CreatorPage({
-    params: {
-        creatorId,
-    },
+  params,
 }: {
-    params: {
-        creatorId: string;
-    };
+  params: Promise<{ creatorId: string }>;
 }) {
-    return (
-         <StreamView creatorId={creatorId} 
-         isCreatorPage= {true}
-         />
-    );
+  // Unwrap the params promise using React.use()
+  const { creatorId } = use(params);
+
+  return (
+    <StreamView
+      creatorId={creatorId}
+      isCreatorPage={true} // This will show thumbnails and hide Play Next
+    />
+  );
 }

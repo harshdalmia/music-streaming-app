@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,11 +27,12 @@ interface Video {
 
 export default function StreamView({
     creatorId,
-    isCreatorPage = false  // Add this prop
+    isCreatorPage = false
 }:{
     creatorId?: string | null
-    isCreatorPage?: boolean  // Add this prop type
+    isCreatorPage?: boolean
 }) {
+  const { data: session } = useSession()  // Add this line
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null)
   const [queue, setQueue] = useState<Video[]>([])
   const [newVideoUrl, setNewVideoUrl] = useState("")
@@ -132,26 +134,36 @@ export default function StreamView({
 
   const handleVote = async (videoId: string, increment: number) => {
     try {
-      if (increment > 0) {
-        await axios.post("/api/streams/upvotes", {
-          streamId: videoId
-        });
-      } else {
-        await axios.post("/api/streams/downvotes", {
-          streamId: videoId
-        });
-      }
-      
-      // Update local state optimistically
-      setQueue((prev) =>
-        prev.map((video) => 
-          video.id === videoId 
-            ? { ...video, upvotes: Math.max(0, video.upvotes + increment), haveUpvoted: increment > 0 ? true : false } 
-            : video
-        ).sort((a, b) => b.upvotes - a.upvotes)
-      );
+        if (increment > 0) {
+            await axios.post("/api/streams/upvotes", {
+                streamId: videoId
+            });
+        } else {
+            await axios.post("/api/streams/downvotes", {
+                streamId: videoId
+            });
+        }
+        
+        // Update local state optimistically
+        setQueue((prev) =>
+            prev.map((video) => 
+                video.id === videoId 
+                    ? { 
+                        ...video, 
+                        upvotes: Math.max(0, video.upvotes + increment), 
+                        haveUpvoted: increment > 0 // Remove session check since anonymous users can vote
+                    } 
+                    : video
+            ).sort((a, b) => b.upvotes - a.upvotes)
+        );
+
+        // Refresh to get accurate data
+        await refreshStreams();
     } catch (error) {
-      console.error("Failed to vote:", error);
+        console.error("Failed to vote:", error);
+        if (axios.isAxiosError(error) && error.response?.data?.error === "Already upvoted") {
+            alert("You have already voted for this song!");
+        }
     }
   }
 
@@ -311,7 +323,7 @@ export default function StreamView({
                       {isCreatorPage ? (
                         // Show thumbnail preview for creator page
                         <img 
-                          src={`https://img.youtube.com/vi/${previewVideo}/maxresdefault.jpg`}
+                          src={`https://img.youtube.com/vi/${previewVideo}/mqdefault.jpg`}  // Fixed: complete the URL
                           alt="Video preview"
                           className="w-full h-full object-cover"
                         />
@@ -357,19 +369,20 @@ export default function StreamView({
                         </div>
 
                         <div className="flex flex-col items-center gap-1">
-                            {!video.haveUpvoted ?(
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleVote(video.id, 1)}
-                            className="h-6 w-6 p-0 text-green-400 hover:text-green-300 hover:bg-green-500/20"
-                          >
-                            <ChevronUp className="w-4 h-4" />
-                          </Button>
-                            ):(
-                                 <div className="h-6 w-6 flex items-center justify-center">
-                                    <ChevronUp className="w-4 h-4 text-green-600" />
-                                </div>)}
+                          {!video.haveUpvoted ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleVote(video.id, 1)}
+                              className="h-6 w-6 p-0 text-green-400 hover:text-green-300 hover:bg-green-500/20"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <div className="h-6 w-6 flex items-center justify-center">
+                              <ChevronUp className="w-4 h-4 text-green-600" />
+                            </div>
+                          )}
                           <span className="text-white text-sm font-bold min-w-[2ch] text-center">{video.upvotes}</span>
                           <Button
                             size="sm"

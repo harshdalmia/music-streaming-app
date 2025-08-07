@@ -135,6 +135,7 @@ exports.Prisma.StreamScalarFieldEnum = {
   smallImg: 'smallImg',
   bigImg: 'bigImg',
   active: 'active',
+  anonymousVotes: 'anonymousVotes',
   userId: 'userId'
 };
 
@@ -154,7 +155,8 @@ exports.Prisma.QueryMode = {
   insensitive: 'insensitive'
 };
 exports.Provider = exports.$Enums.Provider = {
-  Google: 'Google'
+  Google: 'Google',
+  Anonymous: 'Anonymous'
 };
 
 exports.StreamType = exports.$Enums.StreamType = {

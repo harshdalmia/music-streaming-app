@@ -1,42 +1,80 @@
 import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
-const Upvoteschema = z.object({
-    streamId: z.string(),
-});
 export async function POST(req: NextRequest) {
-    const session = await getServerSession();
-        const user = await prismaClient.user.findFirst({
-        where: {
-            email: session?.user?.email ?? ""
+    try {
+        const { streamId } = await req.json();
+        
+        if (!streamId) {
+            return NextResponse.json({
+                error: "Stream ID is required"
+            }, { status: 400 });
         }
-    });
-    if(!user ) {
-        return NextResponse.json({
-            error: "Unauthorized"
-        }, { status: 401 });
-    }
 
+        const session = await getServerSession();
 
-    try{
-        const data = Upvoteschema.parse(await req.json());
-        await prismaClient.upvotes.delete({
-            where: {
-                userId_streamId: {
-                userId: user.id,
-                streamId: data.streamId
+        if (session?.user?.email) {
+            // Registered user downvoting
+            const user = await prismaClient.user.findFirst({
+                where: {
+                    email: session.user.email
+                }
+            });
+
+            if (!user) {
+                return NextResponse.json({
+                    error: "User not found"
+                }, { status: 404 });
+            }
+
+            // Remove upvote if exists
+            await prismaClient.upvotes.deleteMany({
+                where: {
+                    userId: user.id,
+                    streamId: streamId
+                }
+            });
+        } else {
+            // Anonymous user downvoting - decrement anonymousVotes (minimum 0)
+            const stream = await prismaClient.stream.findUnique({
+                where: { id: streamId }
+            });
+
+            if (stream && stream.anonymousVotes > 0) {
+                await prismaClient.stream.update({
+                    where: {
+                        id: streamId
+                    },
+                    data: {
+                        anonymousVotes: {
+                            decrement: 1
+                        }
+                    }
+                });
             }
         }
+
+        // Get updated stream data
+        const stream = await prismaClient.stream.findUnique({
+            where: { id: streamId },
+            include: {
+                _count: {
+                    select: { upvotes: true }
+                }
+            }
         });
+
+        const totalVotes = (stream?._count.upvotes || 0) + (stream?.anonymousVotes || 0);
+
         return NextResponse.json({
-            message: "Upvoted successfully"
+            message: "Vote removed successfully",
+            upvotes: totalVotes
         });
-    }
-    catch(e) {
+    } catch (error) {
+        console.error("Failed to downvote:", error);
         return NextResponse.json({
-            error: "Invalid data"
-        }, { status: 400 });
+            error: "Failed to downvote"
+        }, { status: 500 });
     }
 }

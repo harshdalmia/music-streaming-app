@@ -24,17 +24,18 @@ model User {
 }
 
 model Stream {
-  id          String     @id @default(uuid())
-  type        StreamType
-  url         String
-  extractedId String
-  title       String     @default("")
-  smallImg    String     @default("")
-  bigImg      String     @default("")
-  active      Boolean    @default(true)
-  upvotes     Upvotes[]
-  userId      String
-  user        User       @relation(fields: [userId], references: [id])
+  id             String     @id @default(uuid())
+  type           StreamType
+  url            String
+  extractedId    String
+  title          String     @default("")
+  smallImg       String     @default("")
+  bigImg         String     @default("")
+  active         Boolean    @default(true)
+  anonymousVotes Int        @default(0)
+  upvotes        Upvotes[]
+  userId         String
+  user           User       @relation(fields: [userId], references: [id])
 }
 
 model Upvotes {
@@ -55,4 +56,5 @@ enum StreamType {
 
 enum Provider {
   Google
+  Anonymous
 }

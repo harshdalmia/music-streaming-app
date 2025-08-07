@@ -33,6 +33,7 @@ model Stream {
   smallImg String @default("")
   bigImg String @default("")
   active Boolean @default(true)
+  anonymousVotes Int @default(0)
   upvotes Upvotes[]
   userId String 
   user User @relation(fields: [userId], references: [id])
@@ -57,4 +58,5 @@ enum StreamType {
 
 enum Provider{
   Google
+  Anonymous
 }

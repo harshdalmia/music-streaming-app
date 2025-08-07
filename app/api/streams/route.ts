@@ -2,6 +2,7 @@ import { prismaClient } from "@/app/lib/db";
 import { getServerSession } from "next-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import axios from "axios";
 
 const CreateStreamSchema = z.object({
     url: z.string(),
@@ -74,52 +75,92 @@ export async function POST(req: NextRequest) {
 
 
 export async function GET(req: NextRequest) {
-    const creatorId= req.nextUrl.searchParams.get("creatorId");
+    const creatorId = req.nextUrl.searchParams.get("creatorId");
     
-        const session = await getServerSession();
-    
-           const user = await prismaClient.user.findFirst({
-                where: {
-                    email: session?.user?.email ?? ""
-                }
-            });
-            if(!user ) {
-                return NextResponse.json({
-                    error: "Unauthorized"
-                }, { status: 401 });
-            }
     if (!creatorId) {
         return NextResponse.json({
             error: "Creator ID is required"
         }, { status: 400 });
     }
-      const streams = await prismaClient.stream.findMany({
-        where: {
-            userId: creatorId ?? "",
-             active: true 
 
-        },
-        include: {
-            _count: {
-                select: {
-                    upvotes: true,
-                }
-            },
-            upvotes: {
+    try {
+        const session = await getServerSession();
+        let currentUser = null;
+
+        // Get current user only if session exists (optional authentication)
+        if (session?.user?.email) {
+            currentUser = await prismaClient.user.findFirst({
                 where: {
-                    userId: user.id ?? ""
+                    email: session.user.email
                 }
-            }
-        },
-    })        
+            });
+        }
+
+        const streams = await prismaClient.stream.findMany({
+            where: {
+                userId: creatorId,
+                active: true
+            },
+            include: {
+                _count: {
+                    select: {
+                        upvotes: true,
+                    }
+                },
+                upvotes: currentUser ? {
+                    where: {
+                        userId: currentUser.id
+                    }
+                } : false
+            },
+            orderBy: [
+                {
+                    upvotes: {
+                        _count: 'desc'
+                    }
+                },
+                {
+                    anonymousVotes: 'desc'
+                }
+            ]
+        });
         
-return NextResponse.json({
-    streams: streams.map(({_count, ...rest}) => ({
-        ...rest,
-        upvotes: _count.upvotes,
-        haveUpvoted: rest.upvotes.length ? true : false,
-    }))
-})
+        return NextResponse.json({
+            streams: streams.map(({_count, upvotes, anonymousVotes, ...rest}) => ({
+                ...rest,
+                upvotes: _count.upvotes + anonymousVotes, // Combine registered + anonymous votes
+                haveUpvoted: currentUser && upvotes.length > 0,
+            }))
+        });
+    } catch (error) {
+        console.error("Failed to fetch streams:", error);
+        return NextResponse.json({
+            error: "Failed to fetch streams"
+        }, { status: 500 });
+    }
+}
+
+async function refreshStreams(creatorId: string, setQueue: Function, setCurrentVideo: Function) {
+  try {
+    console.log("Fetching streams for creatorId:", creatorId); // Debug log
+    const res = await axios.get(`/api/streams/?creatorId=${creatorId}`);
+    if (res.data.streams) {
+      setQueue(res.data.streams);
+      
+      const activeStream = res.data.streams.find((stream: Video) => stream.active);
+      if (activeStream) {
+        setCurrentVideo(activeStream);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to fetch streams:", error);
+    
+    // Add more detailed error logging
+    if (axios.isAxiosError(error)) {
+      console.error("Response data:", error.response?.data);
+      console.error("Response status:", error.response?.status);
+    }
+  }
 }
 
 
