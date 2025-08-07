@@ -1,0 +1,11 @@
+# Generated files
+app/generated/
+.next/
+node_modules/
+
+# Build files
+out/
+dist/
+
+# Prisma files
+prisma/migrations/

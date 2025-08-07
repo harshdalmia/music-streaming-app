@@ -25,9 +25,8 @@ export default function Component() {
               <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl xl:text-6xl/none bg-gradient-to-r from-purple-600 via-pink-600 to-purple-800 bg-clip-text text-transparent">
                 Let Your Fans Choose the Music
               </h1>
-              <p className="max-w-[600px] text-gray-600 md:text-xl">
-                Stream live while your audience picks the soundtrack. Build stronger communities through collaborative
-                music experiences that keep viewers engaged longer.
+              <p className="text-purple-200 max-w-2xl mx-auto">
+                Let your audience choose the soundtrack. Create a stream, share your link, and watch as your viewers vote for their favorite songs in real-time.
               </p>
               <div className="flex flex-col gap-3 min-[400px]:flex-row">
                 <Button
