@@ -179,7 +179,6 @@ const config = {
     "db"
   ],
   "activeProvider": "postgresql",
-  "postinstall": false,
   "inlineDatasources": {
     "db": {
       "url": {
@@ -188,8 +187,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"../app/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel User {\n  id       String    @id @default(uuid())\n  email    String    @unique\n  provider Provider\n  streams  Stream[]\n  upvotes  Upvotes[]\n}\n\nmodel Stream {\n  id          String     @id @default(uuid())\n  type        StreamType\n  url         String\n  extractedId String\n  title       String     @default(\"\")\n  smallImg    String     @default(\"\")\n  bigImg      String     @default(\"\")\n  active      Boolean    @default(true)\n  upvotes     Upvotes[]\n  userId      String\n  user        User       @relation(fields: [userId], references: [id])\n}\n\nmodel Upvotes {\n  id     String @id @default(uuid())\n  userId String\n\n  streamId String\n  user     User   @relation(fields: [userId], references: [id])\n  stream   Stream @relation(fields: [streamId], references: [id])\n\n  @@unique([userId, streamId])\n}\n\nenum StreamType {\n  Spotify\n  Youtube\n}\n\nenum Provider {\n  Google\n}\n",
-  "inlineSchemaHash": "df655976848ca915ed9e293f250363311a8c75693245814f54fdc79f8457cd72",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"../app/generated/prisma\"\n}\n\ndatasource db {\n  provider  = \"postgresql\"\n  url       = env(\"DATABASE_URL\")\n  directUrl = env(\"DIRECT_URL\")\n}\n\nmodel User {\n  id       String    @id @default(uuid())\n  email    String    @unique\n  provider Provider\n  streams  Stream[]\n  upvotes  Upvotes[]\n}\n\nmodel Stream {\n  id          String     @id @default(uuid())\n  type        StreamType\n  url         String\n  extractedId String\n  title       String     @default(\"\")\n  smallImg    String     @default(\"\")\n  bigImg      String     @default(\"\")\n  active      Boolean    @default(true)\n  upvotes     Upvotes[]\n  userId      String\n  user        User       @relation(fields: [userId], references: [id])\n}\n\nmodel Upvotes {\n  id     String @id @default(uuid())\n  userId String\n\n  streamId String\n  user     User   @relation(fields: [userId], references: [id])\n  stream   Stream @relation(fields: [streamId], references: [id])\n\n  @@unique([userId, streamId])\n}\n\nenum StreamType {\n  Spotify\n  Youtube\n}\n\nenum Provider {\n  Google\n}\n",
+  "inlineSchemaHash": "99c087d394629c6dfb9e550adecf578136d823e324606b52830d31af3df4af58",
   "copyEngine": true
 }
 
