@@ -19,7 +19,8 @@ export async function PATCH(
       error: "Unauthorized"
     }, { status: 401 });
   }
-try {
+
+  try {
     const { active } = await req.json();
     
     // Update the stream
@@ -31,7 +32,8 @@ try {
         active: active
       }
     });
-return NextResponse.json({ 
+
+    return NextResponse.json({ 
       message: "Stream updated successfully",
       stream 
     });
