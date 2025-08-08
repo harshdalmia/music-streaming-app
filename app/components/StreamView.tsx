@@ -1,13 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ChevronUp, ChevronDown, Play, Users, Plus, Share, X } from "lucide-react"
-import { YouTubeEmbed } from "@next/third-parties/google"
+import IsolatedYouTubePlayer from "./IsolatedYoutubePlayer"
 import axios from "axios"
 import { Appbar } from "./Appbar"
 
@@ -23,6 +23,7 @@ interface Video {
   active: boolean
   upvotes: number
   haveUpvoted: boolean
+  isCurrentlyPlaying?: boolean
 }
 
 export default function StreamView({
@@ -33,116 +34,164 @@ export default function StreamView({
     isCreatorPage?: boolean
 }) {
   const { data: session } = useSession()
-  const [currentVideo, setCurrentVideo] = useState<Video | null>(null)
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
+  const [currentVideoTitle, setCurrentVideoTitle] = useState<string>("")
+  const [currentVideoImg, setCurrentVideoImg] = useState<string>("")
   const [queue, setQueue] = useState<Video[]>([])
-  const [streams, setStreams] = useState<Video[]>([])
   const [newVideoUrl, setNewVideoUrl] = useState("")
   const [previewVideo, setPreviewVideo] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shareMessage, setShareMessage] = useState("")
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [playerKey, setPlayerKey] = useState(0)
+  const lastCurrentVideoRef = useRef<string | null>(null)
   
-  // Consolidated fetch function
-  const fetchStreams = async () => {
-    try {
-      const response = await fetch(`/api/streams?creatorId=${creatorId}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Only get active streams
-        const activeStreams = data.streams.filter((stream: Video) => stream.active);
-        setStreams(activeStreams);
-        
-        // Sort by upvotes and update queue
-        const sortedStreams = activeStreams.sort((a: Video, b: Video) => b.upvotes - a.upvotes);
-        setQueue(sortedStreams);
-        
-        // Set current video if none is playing
-        if (!currentVideo && sortedStreams.length > 0) {
-          setCurrentVideo(sortedStreams[0]);
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching streams:', error);
-    }
-  };
-
-  // Auto play next song when current song ends
-  const playNextAutomatically = async () => {
-    if (queue.length <= 1) {
-      // No more songs in queue
-      setCurrentVideo(null);
-      setIsVideoPlaying(false);
-      return;
-    }
-
-    const nextStream = queue[1]; // Get next song (current is at index 0)
+  // Stable fetch function with better current video detection
+  const fetchQueue = useCallback(async () => {
+    if (!creatorId) return
     
     try {
-      // Mark the current song as inactive
-      if (currentVideo) {
-        await fetch(`/api/streams/${currentVideo.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ active: false }),
-        });
+      const response = await fetch(`/api/streams?creatorId=${creatorId}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const activeStreams = data.streams.filter((stream: Video) => stream.active)
+        const sortedStreams = activeStreams.sort((a: Video, b: Video) => b.upvotes - a.upvotes)
+        
+        // Remove currently playing video from queue display
+        const queueWithoutCurrent = currentVideoId 
+          ? sortedStreams.filter(stream => stream.extractedId !== currentVideoId)
+          : sortedStreams
+        
+        setQueue(queueWithoutCurrent)
+        
+        // Check if there's a new current video from the API
+        const apiCurrentVideo = data.currentlyPlaying
+        
+        if (apiCurrentVideo) {
+          const newVideoId = apiCurrentVideo.extractedId
+          
+          // If this is a new video different from what we're currently showing
+          if (newVideoId !== lastCurrentVideoRef.current) {
+            console.log('New video detected:', newVideoId, 'Previous:', lastCurrentVideoRef.current)
+            
+            setCurrentVideoId(newVideoId)
+            setCurrentVideoTitle(apiCurrentVideo.title)
+            setCurrentVideoImg(apiCurrentVideo.bigImg)
+            
+            // If we're on fan page and video changed, update player
+            if (!isCreatorPage && lastCurrentVideoRef.current !== null) {
+              setIsVideoPlaying(true)
+              setPlayerKey(prev => prev + 1) // Force new player instance
+            }
+            
+            lastCurrentVideoRef.current = newVideoId
+            setIsInitialized(true)
+          }
+        } else if (!isInitialized && sortedStreams.length > 0) {
+          // Fallback: if no currentlyPlaying from API, use first in queue
+          const firstVideo = sortedStreams[0]
+          setCurrentVideoId(firstVideo.extractedId)
+          setCurrentVideoTitle(firstVideo.title)
+          setCurrentVideoImg(firstVideo.bigImg)
+          lastCurrentVideoRef.current = firstVideo.extractedId
+          setIsInitialized(true)
+          
+          // Remove the now-playing video from queue
+          setQueue(sortedStreams.slice(1))
+        } else if (sortedStreams.length === 0) {
+          // No videos in queue
+          setCurrentVideoId(null)
+          setCurrentVideoTitle("")
+          setCurrentVideoImg("")
+          setIsVideoPlaying(false)
+          lastCurrentVideoRef.current = null
+        }
       }
-      
-      // Set the next song as current
-      setCurrentVideo(nextStream);
-      setIsVideoPlaying(true);
-      
-      // Remove current song from queue
-      const newQueue = queue.slice(1);
-      setQueue(newQueue);
-      
-      // Refresh streams
-      setTimeout(() => {
-        fetchStreams();
-      }, 1000);
     } catch (error) {
-      console.error('Error auto-playing next song:', error);
+      console.error('Error fetching streams:', error)
     }
-  };
+  }, [creatorId, isInitialized, isCreatorPage, currentVideoId])
 
+  // Play next function - removes current video and plays next
+  const playNext = useCallback(async () => {
+    console.log('Playing next video...')
+    
+    if (queue.length === 0) {
+      setCurrentVideoId(null)
+      setCurrentVideoTitle("")
+      setCurrentVideoImg("")
+      setIsVideoPlaying(false)
+      lastCurrentVideoRef.current = null
+      return
+    }
+
+    const nextVideo = queue[0] // Take first from queue
+    
+    // Mark current video as inactive in database
+    if (currentVideoId) {
+      // Find current video in original queue to get its ID
+      try {
+        const response = await fetch(`/api/streams?creatorId=${creatorId}`)
+        if (response.ok) {
+          const data = await response.json()
+          const currentVideo = data.streams.find((s: Video) => s.extractedId === currentVideoId)
+          
+          if (currentVideo) {
+            await fetch(`/api/streams/${currentVideo.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ active: false }),
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Error marking current stream as inactive:', error)
+      }
+    }
+    
+    // Set new video
+    setCurrentVideoId(nextVideo.extractedId)
+    setCurrentVideoTitle(nextVideo.title)
+    setCurrentVideoImg(nextVideo.bigImg)
+    setIsVideoPlaying(true)
+    setPlayerKey(prev => prev + 1)
+    lastCurrentVideoRef.current = nextVideo.extractedId
+    
+    // Remove the new current video from queue immediately
+    setQueue(prev => prev.filter(video => video.id !== nextVideo.id))
+    
+    // Update queue after a delay
+    setTimeout(() => fetchQueue(), 1000)
+  }, [queue, fetchQueue, currentVideoId, creatorId])
+
+  // Handle play video - removes from queue when starting
+  const handlePlayVideo = () => {
+    setIsVideoPlaying(true)
+    setPlayerKey(prev => prev + 1)
+    
+    // Remove current video from queue display when it starts playing
+    if (currentVideoId) {
+      setQueue(prev => prev.filter(video => video.extractedId !== currentVideoId))
+    }
+  }
+
+  // More frequent polling - especially important for fan pages
   useEffect(() => {
     if (creatorId) {
-      fetchStreams();
-      const interval = setInterval(fetchStreams, 10000);
-      return () => clearInterval(interval);
+      fetchQueue()
+      
+      // Different polling frequencies for creator vs fan pages
+      const pollInterval = isCreatorPage ? 10000 : 3000 // Fan pages poll more frequently
+      
+      const interval = setInterval(() => {
+        fetchQueue()
+      }, pollInterval)
+      
+      return () => clearInterval(interval)
     }
-  }, [creatorId]);
-
-  // YouTube player event handler
-  useEffect(() => {
-    if (!isCreatorPage && currentVideo) {
-      const handleYouTubeEvent = (event: any) => {
-        // YouTube player states: 0 = ended, 1 = playing, 2 = paused
-        if (event.data === 0) { // Video ended
-          playNextAutomatically();
-        }
-      };
-
-      // Listen for YouTube player events
-      const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement;
-      if (iframe) {
-        iframe.addEventListener('load', () => {
-          // YouTube API will be available after iframe loads
-          if (window.YT && window.YT.Player) {
-            // Create YouTube player instance to listen for events
-            new window.YT.Player(iframe, {
-              events: {
-                onStateChange: handleYouTubeEvent
-              }
-            });
-          }
-        });
-      }
-    }
-  }, [currentVideo, queue, isCreatorPage]);
+  }, [creatorId, fetchQueue, isCreatorPage])
 
   function extractYouTubeId(url: string): string | null {
     const patterns = [
@@ -190,18 +239,25 @@ export default function StreamView({
     setIsSubmitting(true)
 
     try {
-      await axios.post("/api/streams", {
+      await axios.post(`/api/streams?creatorId=${creatorId}`, {
         url: newVideoUrl,
-        type: "Youtube"
-      });
-      
-      // Refresh streams after adding
-      await fetchStreams();
+        type: "Youtube",
+        creatorId: creatorId
+      })
       
       setNewVideoUrl("")
       setPreviewVideo(null)
+      alert("Song added to queue successfully!")
+      
+      // Immediate refresh after adding
+      setTimeout(() => fetchQueue(), 500)
     } catch (error) {
-      console.error("Failed to submit video:", error);
+      console.error("Failed to submit video:", error)
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        alert(error.response.data.error)
+      } else {
+        alert("Failed to add video. Please try again.")
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -212,96 +268,52 @@ export default function StreamView({
         if (increment > 0) {
             await axios.post("/api/streams/upvotes", {
                 streamId: videoId
-            });
+            })
         } else {
             await axios.post("/api/streams/downvotes", {
                 streamId: videoId
-            });
+            })
         }
         
-        // Update local state optimistically
-        setQueue((prev) =>
-            prev.map((video) => 
-                video.id === videoId 
-                    ? { 
-                        ...video, 
-                        upvotes: Math.max(0, video.upvotes + increment), 
-                        haveUpvoted: increment > 0
-                    } 
-                    : video
-            ).sort((a, b) => b.upvotes - a.upvotes)
-        );
-
-        // Refresh to get accurate data
-        setTimeout(() => fetchStreams(), 1000);
+        // Immediate refresh after voting
+        setTimeout(() => fetchQueue(), 500)
     } catch (error) {
-        console.error("Failed to vote:", error);
+        console.error("Failed to vote:", error)
         if (axios.isAxiosError(error) && error.response?.data?.error === "Already upvoted") {
-            alert("You have already voted for this song!");
+            alert("You have already voted for this song!")
         }
     }
   }
-
-  // Manual play next function
-  const handlePlayNext = async () => {
-    if (queue.length === 0) {
-      setCurrentVideo(null);
-      return;
-    }
-
-    const nextStream = queue[0];
-    
-    try {
-      // Mark the current song as inactive in the database
-      const response = await fetch(`/api/streams/${nextStream.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ active: false }),
-      });
-
-      if (response.ok) {
-        // Set the next song as current
-        setCurrentVideo(nextStream);
-        setIsVideoPlaying(true);
-        
-        // Remove from local queue state immediately
-        const newQueue = queue.filter(stream => stream.id !== nextStream.id);
-        setQueue(newQueue);
-        
-        // Refresh the streams to get updated data
-        setTimeout(() => {
-          fetchStreams();
-        }, 2000);
-      }
-    } catch (error) {
-      console.error('Error marking stream as inactive:', error);
-    }
-  };
 
   const removeFromQueue = async (streamId: string) => {
     try {
       const response = await fetch(`/api/streams/${streamId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: false }),
-      });
+      })
 
       if (response.ok) {
-        // Remove from local state immediately
-        const newQueue = queue.filter(stream => stream.id !== streamId);
-        setQueue(newQueue);
+        // If we removed the current video, clear it
+        const removedVideo = queue.find(v => v.id === streamId)
+        if (removedVideo && removedVideo.extractedId === currentVideoId) {
+          setCurrentVideoId(null)
+          setCurrentVideoTitle("")
+          setCurrentVideoImg("")
+          setIsVideoPlaying(false)
+          lastCurrentVideoRef.current = null
+        }
         
-        // Refresh streams
-        fetchStreams();
+        // Remove from local queue immediately
+        setQueue(prev => prev.filter(video => video.id !== streamId))
+        
+        // Refresh after removal
+        setTimeout(() => fetchQueue(), 500)
       }
     } catch (error) {
-      console.error('Error removing from queue:', error);
+      console.error('Error removing from queue:', error)
     }
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
@@ -340,17 +352,22 @@ export default function StreamView({
                   <CardTitle className="text-white flex items-center gap-2">
                     <Play className="w-5 h-5 text-red-500" />
                     Now Playing
+                    {!isCreatorPage && (
+                      <Badge variant="secondary" className="ml-2 bg-blue-600">
+                        Fan View
+                      </Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {currentVideo ? (
+                  {currentVideoId ? (
                     <>
                       {isCreatorPage ? (
                         // Creator preview
                         <div className="aspect-video rounded-lg overflow-hidden bg-black/40 relative">
                           <img 
-                            src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
-                            alt={currentVideo.title}
+                            src={currentVideoImg || `https://img.youtube.com/vi/${currentVideoId}/maxresdefault.jpg`}
+                            alt={currentVideoTitle}
                             className="w-full h-full object-cover"
                           />
                           <div className="absolute inset-0 flex items-center justify-center">
@@ -365,24 +382,25 @@ export default function StreamView({
                           </div>
                         </div>
                       ) : (
-                        // Fan page with auto-play functionality
+                        // Fan page with video player
                         <div className="aspect-video rounded-lg overflow-hidden relative">
                           {isVideoPlaying ? (
-                            <YouTubeEmbed 
-                              videoid={currentVideo.extractedId} 
-                              height={400} 
-                              params="controls=1&autoplay=1&rel=0&modestbranding=1&enablejsapi=1"
-                            />
+                            <div key={playerKey} className="w-full h-full">
+                              <IsolatedYouTubePlayer 
+                                videoId={currentVideoId} 
+                                onVideoEnd={playNext} 
+                              />
+                            </div>
                           ) : (
                             <div className="relative w-full h-full bg-black">
                               <img 
-                                src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
-                                alt={currentVideo.title}
+                                src={currentVideoImg || `https://img.youtube.com/vi/${currentVideoId}/maxresdefault.jpg`}
+                                alt={currentVideoTitle}
                                 className="w-full h-full object-cover"
                               />
                               <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                                 <Button
-                                  onClick={() => setIsVideoPlaying(true)}
+                                  onClick={handlePlayVideo}
                                   className="bg-red-600 hover:bg-red-700 rounded-full p-6"
                                 >
                                   <Play className="w-12 h-12 text-white fill-white" />
@@ -394,16 +412,25 @@ export default function StreamView({
                       )}
                       <div className="flex items-center justify-between text-white">
                         <div>
-                          <h3 className="font-semibold">{currentVideo.title}</h3>
+                          <h3 className="font-semibold">{currentVideoTitle}</h3>
                           {!isCreatorPage && !isVideoPlaying && (
                             <p className="text-sm text-purple-200 mt-1">
                               ▶️ Click the play button to start the video
                             </p>
                           )}
-                          {!isCreatorPage && isVideoPlaying && queue.length > 1 && (
-                            <p className="text-sm text-green-200 mt-1">
-                              🎵 Next: {queue[1]?.title || "No more songs"}
-                            </p>
+                          {!isCreatorPage && isVideoPlaying && queue.length > 0 && (
+                            <div className="flex items-center gap-2 mt-2">
+                              <p className="text-sm text-green-200">
+                                🎵 Next: {queue[0]?.title || "No more songs"}
+                              </p>
+                              <Button
+                                onClick={playNext}
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1"
+                              >
+                                Skip to Next
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -425,7 +452,7 @@ export default function StreamView({
                     </div>
                     {!isCreatorPage && (
                       <Button
-                        onClick={handlePlayNext}
+                        onClick={playNext}
                         disabled={queue.length === 0}
                         className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
                         size="sm"
@@ -465,19 +492,11 @@ export default function StreamView({
 
                   {previewVideo && (
                     <div className="aspect-video rounded-lg overflow-hidden bg-black/40">
-                      {isCreatorPage ? (
-                        <img 
-                          src={`https://img.youtube.com/vi/${previewVideo}/mqdefault.jpg`}
-                          alt="Video preview"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <YouTubeEmbed 
-                          videoid={previewVideo} 
-                          height={200} 
-                          params="controls=1&rel=0&modestbranding=1" 
-                        />
-                      )}
+                      <img 
+                        src={`https://img.youtube.com/vi/${previewVideo}/mqdefault.jpg`}
+                        alt="Video preview"
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   )}
                 </CardContent>
@@ -497,11 +516,7 @@ export default function StreamView({
                   {queue.map((video, index) => (
                     <div
                       key={video.id}
-                      className={`bg-white/5 rounded-lg p-3 border transition-colors ${
-                        video.id === currentVideo?.id 
-                          ? 'border-green-500/50 bg-green-500/10' 
-                          : 'border-purple-500/20 hover:bg-white/10'
-                      }`}
+                      className="bg-white/5 rounded-lg p-3 border border-purple-500/20 hover:bg-white/10 transition-colors"
                     >
                       <div className="flex gap-3">
                         <div className="relative">
@@ -512,25 +527,16 @@ export default function StreamView({
                           />
                           <Badge 
                             variant="secondary" 
-                            className={`absolute -top-1 -left-1 text-xs ${
-                              video.id === currentVideo?.id 
-                                ? 'bg-green-600 text-white' 
-                                : 'bg-purple-600 text-white'
-                            }`}
+                            className="absolute -top-1 -left-1 text-xs bg-purple-600 text-white"
                           >
-                            {video.id === currentVideo?.id ? '🎵' : `#${index + 1}`}
+                            #{index + 1}
                           </Badge>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h4 className={`text-sm font-medium truncate ${
-                            video.id === currentVideo?.id ? 'text-green-300' : 'text-white'
-                          }`}>
+                          <h4 className="text-sm font-medium truncate text-white">
                             {video.title}
                           </h4>
-                          {video.id === currentVideo?.id && (
-                            <p className="text-xs text-green-400 mt-1">Now Playing</p>
-                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -562,7 +568,7 @@ export default function StreamView({
                             </Button>
                           </div>
 
-                          {/* Delete button - only visible on dashboard */}
+                          {/* Delete button */}
                           {!isCreatorPage && (
                             <Button
                               size="sm"
@@ -592,9 +598,6 @@ export default function StreamView({
           </div>
         </div>
       </div>
-
-      {/* Add YouTube API script */}
-      <script src="https://www.youtube.com/iframe_api" async></script>
     </div>
   )
 }
