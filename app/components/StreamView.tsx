@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ChevronUp, ChevronDown, Play, Users, Plus, Share,X } from "lucide-react"
+import { ChevronUp, ChevronDown, Play, Users, Plus, Share, X } from "lucide-react"
 import { YouTubeEmbed } from "@next/third-parties/google"
 import axios from "axios"
 import { Appbar } from "./Appbar"
@@ -35,16 +35,16 @@ export default function StreamView({
   const { data: session } = useSession()
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null)
   const [queue, setQueue] = useState<Video[]>([])
-  const [streams, setStreams] = useState<Video[]>([]) // Add missing streams state
+  const [streams, setStreams] = useState<Video[]>([])
   const [newVideoUrl, setNewVideoUrl] = useState("")
   const [previewVideo, setPreviewVideo] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shareMessage, setShareMessage] = useState("")
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   
   // Consolidated fetch function
   const fetchStreams = async () => {
     try {
-      console.log("Fetching streams for creatorId:", creatorId);
       const response = await fetch(`/api/streams?creatorId=${creatorId}`);
       
       if (response.ok) {
@@ -62,11 +62,49 @@ export default function StreamView({
         if (!currentVideo && sortedStreams.length > 0) {
           setCurrentVideo(sortedStreams[0]);
         }
-        
-        console.log('Fetched active streams:', activeStreams.length);
       }
     } catch (error) {
       console.error('Error fetching streams:', error);
+    }
+  };
+
+  // Auto play next song when current song ends
+  const playNextAutomatically = async () => {
+    if (queue.length <= 1) {
+      // No more songs in queue
+      setCurrentVideo(null);
+      setIsVideoPlaying(false);
+      return;
+    }
+
+    const nextStream = queue[1]; // Get next song (current is at index 0)
+    
+    try {
+      // Mark the current song as inactive
+      if (currentVideo) {
+        await fetch(`/api/streams/${currentVideo.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ active: false }),
+        });
+      }
+      
+      // Set the next song as current
+      setCurrentVideo(nextStream);
+      setIsVideoPlaying(true);
+      
+      // Remove current song from queue
+      const newQueue = queue.slice(1);
+      setQueue(newQueue);
+      
+      // Refresh streams
+      setTimeout(() => {
+        fetchStreams();
+      }, 1000);
+    } catch (error) {
+      console.error('Error auto-playing next song:', error);
     }
   };
 
@@ -77,6 +115,34 @@ export default function StreamView({
       return () => clearInterval(interval);
     }
   }, [creatorId]);
+
+  // YouTube player event handler
+  useEffect(() => {
+    if (!isCreatorPage && currentVideo) {
+      const handleYouTubeEvent = (event: any) => {
+        // YouTube player states: 0 = ended, 1 = playing, 2 = paused
+        if (event.data === 0) { // Video ended
+          playNextAutomatically();
+        }
+      };
+
+      // Listen for YouTube player events
+      const iframe = document.querySelector('iframe[src*="youtube.com"]') as HTMLIFrameElement;
+      if (iframe) {
+        iframe.addEventListener('load', () => {
+          // YouTube API will be available after iframe loads
+          if (window.YT && window.YT.Player) {
+            // Create YouTube player instance to listen for events
+            new window.YT.Player(iframe, {
+              events: {
+                onStateChange: handleYouTubeEvent
+              }
+            });
+          }
+        });
+      }
+    }
+  }, [currentVideo, queue, isCreatorPage]);
 
   function extractYouTubeId(url: string): string | null {
     const patterns = [
@@ -176,18 +242,14 @@ export default function StreamView({
     }
   }
 
-  // Fixed handlePlayNext function
+  // Manual play next function
   const handlePlayNext = async () => {
-    console.log('Current queue length:', queue.length);
-    
     if (queue.length === 0) {
-      console.log('No songs in queue');
       setCurrentVideo(null);
       return;
     }
 
     const nextStream = queue[0];
-    console.log('Playing next:', nextStream.title);
     
     try {
       // Mark the current song as inactive in the database
@@ -200,15 +262,13 @@ export default function StreamView({
       });
 
       if (response.ok) {
-        console.log('Stream marked as inactive');
-        
         // Set the next song as current
         setCurrentVideo(nextStream);
+        setIsVideoPlaying(true);
         
         // Remove from local queue state immediately
         const newQueue = queue.filter(stream => stream.id !== nextStream.id);
         setQueue(newQueue);
-        console.log('New queue length:', newQueue.length);
         
         // Refresh the streams to get updated data
         setTimeout(() => {
@@ -286,6 +346,7 @@ export default function StreamView({
                   {currentVideo ? (
                     <>
                       {isCreatorPage ? (
+                        // Creator preview
                         <div className="aspect-video rounded-lg overflow-hidden bg-black/40 relative">
                           <img 
                             src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
@@ -304,19 +365,56 @@ export default function StreamView({
                           </div>
                         </div>
                       ) : (
-                        <div className="aspect-video rounded-lg overflow-hidden">
-                          <YouTubeEmbed videoid={currentVideo.extractedId} height={400} params="autoplay=1&mute=1" />
+                        // Fan page with auto-play functionality
+                        <div className="aspect-video rounded-lg overflow-hidden relative">
+                          {isVideoPlaying ? (
+                            <YouTubeEmbed 
+                              videoid={currentVideo.extractedId} 
+                              height={400} 
+                              params="controls=1&autoplay=1&rel=0&modestbranding=1&enablejsapi=1"
+                            />
+                          ) : (
+                            <div className="relative w-full h-full bg-black">
+                              <img 
+                                src={currentVideo.bigImg || `https://img.youtube.com/vi/${currentVideo.extractedId}/maxresdefault.jpg`}
+                                alt={currentVideo.title}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                                <Button
+                                  onClick={() => setIsVideoPlaying(true)}
+                                  className="bg-red-600 hover:bg-red-700 rounded-full p-6"
+                                >
+                                  <Play className="w-12 h-12 text-white fill-white" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       <div className="flex items-center justify-between text-white">
                         <div>
                           <h3 className="font-semibold">{currentVideo.title}</h3>
+                          {!isCreatorPage && !isVideoPlaying && (
+                            <p className="text-sm text-purple-200 mt-1">
+                              ▶️ Click the play button to start the video
+                            </p>
+                          )}
+                          {!isCreatorPage && isVideoPlaying && queue.length > 1 && (
+                            <p className="text-sm text-green-200 mt-1">
+                              🎵 Next: {queue[1]?.title || "No more songs"}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </>
                   ) : (
                     <div className="aspect-video rounded-lg bg-black/40 flex items-center justify-center">
-                      <p className="text-white">No video currently playing</p>
+                      <div className="text-center text-white">
+                        <Play className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p>No video currently playing</p>
+                        <p className="text-sm text-purple-200 mt-2">Songs will appear here when added to the queue</p>
+                      </div>
                     </div>
                   )}
                   
@@ -325,7 +423,6 @@ export default function StreamView({
                       <Users className="w-4 h-4" />
                       <span>{queue.length} songs in queue</span>
                     </div>
-                    {/* Only show Play Next button on dashboard, not creator page */}
                     {!isCreatorPage && (
                       <Button
                         onClick={handlePlayNext}
@@ -375,7 +472,11 @@ export default function StreamView({
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <YouTubeEmbed videoid={previewVideo} height={200} params="controls=1" />
+                        <YouTubeEmbed 
+                          videoid={previewVideo} 
+                          height={200} 
+                          params="controls=1&rel=0&modestbranding=1" 
+                        />
                       )}
                     </div>
                   )}
@@ -396,7 +497,11 @@ export default function StreamView({
                   {queue.map((video, index) => (
                     <div
                       key={video.id}
-                      className="bg-white/5 rounded-lg p-3 border border-purple-500/20 hover:bg-white/10 transition-colors"
+                      className={`bg-white/5 rounded-lg p-3 border transition-colors ${
+                        video.id === currentVideo?.id 
+                          ? 'border-green-500/50 bg-green-500/10' 
+                          : 'border-purple-500/20 hover:bg-white/10'
+                      }`}
                     >
                       <div className="flex gap-3">
                         <div className="relative">
@@ -405,13 +510,27 @@ export default function StreamView({
                             alt={video.title}
                             className="w-16 h-12 rounded object-cover"
                           />
-                          <Badge variant="secondary" className="absolute -top-1 -left-1 text-xs bg-purple-600 text-white">
-                            #{index + 1}
+                          <Badge 
+                            variant="secondary" 
+                            className={`absolute -top-1 -left-1 text-xs ${
+                              video.id === currentVideo?.id 
+                                ? 'bg-green-600 text-white' 
+                                : 'bg-purple-600 text-white'
+                            }`}
+                          >
+                            {video.id === currentVideo?.id ? '🎵' : `#${index + 1}`}
                           </Badge>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-white text-sm font-medium truncate">{video.title}</h4>
+                          <h4 className={`text-sm font-medium truncate ${
+                            video.id === currentVideo?.id ? 'text-green-300' : 'text-white'
+                          }`}>
+                            {video.title}
+                          </h4>
+                          {video.id === currentVideo?.id && (
+                            <p className="text-xs text-green-400 mt-1">Now Playing</p>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -443,7 +562,7 @@ export default function StreamView({
                             </Button>
                           </div>
 
-                          {/* Delete button - only visible on dashboard (not on shared fan page) */}
+                          {/* Delete button - only visible on dashboard */}
                           {!isCreatorPage && (
                             <Button
                               size="sm"
@@ -473,6 +592,9 @@ export default function StreamView({
           </div>
         </div>
       </div>
+
+      {/* Add YouTube API script */}
+      <script src="https://www.youtube.com/iframe_api" async></script>
     </div>
   )
 }
